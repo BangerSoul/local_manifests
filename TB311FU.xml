@@ -1,0 +1,5 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <project path="device/lenovo/TB311FU" name="BangerSoul/device_lenovo_TB311FU" remote="github" revision="lineage-22.1" />
+    <project path="vendor/lenovo/TB311FU" name="BangerSoul/vendor_lenovo_TB311FU" remote="github" revision="lineage-22.1" />
+</manifest>
