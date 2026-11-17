@@ -13,6 +13,10 @@ Run a reproducible LineageOS 22.1 userdebug build for the Lenovo Tab M11 TB311FU
 - Railway currently has a Trial service. AOSP's current build requirements are 64 GB RAM and 400 GB free disk. Railway Trial resources and storage are far below that.
 - A public ROM release may contain Lenovo proprietary vendor binaries. The user selected public GitHub Releases as the destination.
 
+## Implementation correction after source review
+
+The kernel helper workflow does not provide TB311FU DTBO source files, masks its `dtbo.img` build failure, and also applies module-signature and permissive dm-verity bypasses. The Railway implementation therefore uses the matching stock kernel image component and `dtbo.img` from one authorized TB311FU firmware dump. It validates both before the Android source sync and does not add a generic GKI kernel to a public ROM without demonstrated device compatibility.
+
 ## Goals
 
 - Replace Railpack detection with a Docker based Railway build container.
@@ -43,7 +47,7 @@ Run a reproducible LineageOS 22.1 userdebug build for the Lenovo Tab M11 TB311FU
 - Mount one persistent volume at `/workspace`. Require at least 400 GiB free at the start of a run; provision enough total volume size to leave this free after filesystem overhead and future growth.
 - Require at least 64 GiB RAM and Linux x86-64. Railway must provide Enterprise/custom per-replica resources; Trial cannot run this workload, and the documented Pro per-replica memory cap is below the target.
 - Pin repo sync and build to LineageOS 22.1 and the manifest's existing target. Do not silently upgrade the ROM branch.
-- Before a build, verify the device tree has a real DTBO input, a configured kernel source or valid prebuilt kernel, and all required proprietary files. Placeholder or missing inputs stop the job.
+- Before a build, verify the matching stock kernel image, DTBO, and all required proprietary files. Placeholder or missing inputs stop the job before source sync.
 - Do not extract files from a tablet at Railway runtime. Prepare device and vendor inputs from an authorized firmware dump or the local vendor image, validate them, then sync them as build inputs.
 - Require a release tag for publication. Upload only after build and artifact checks pass. The public release contains the ROM ZIP, its SHA-256 file, and source/build revision metadata. Use a `GH_TOKEN` Railway variable with repository contents write permission.
 - Do not publish proprietary blobs as a standalone source archive. The ROM package is still public and may include them; the owner must have rights to distribute those binaries.
@@ -52,12 +56,12 @@ Run a reproducible LineageOS 22.1 userdebug build for the Lenovo Tab M11 TB311FU
 
 The implementation spans the linked Android input repositories as well as `BangerSoul/local_manifests`:
 
-- In `BangerSoul/local_manifests`, add a `Dockerfile`, `scripts/railway-build.sh`, and Railway setup/release instructions in `README.md`. The script handles resource checks, source sync, kernel integration, target build, artifact validation, checksum/provenance generation, and tagged release upload.
-- Update `TB311FU.xml` to include the existing kernel build inputs from `BangerSoul/kernel_lenovo_TB311FU` at a pinned revision.
+- In `BangerSoul/local_manifests`, add a `Dockerfile`, preflight and kernel-input preparation scripts, `scripts/railway-build.sh`, and Railway setup/release instructions in `README.md`. The script handles resource checks, source sync, target build, artifact validation, checksum/provenance generation, and tagged release upload.
 - In `BangerSoul/device_lenovo_TB311FU`, update `BoardConfig.mk` to consume the verified kernel/DTBO outputs and repair `extract-files.py` so it imports its typing dependencies, validates listed hashes, and errors on missing inputs instead of generating placeholders.
 - In `BangerSoul/vendor_lenovo_TB311FU`, replace the 111 placeholder files with the matching real files from an authorized device/vendor dump and preserve verified hashes. The tablet currently supplies 41 listed files, so the remaining paths must come from the local vendor image or a matching firmware dump.
-- Reuse the existing kernel repo's GKI workflow inputs (defconfig and patch set) while compiling the kernel source separately from the pinned `kernel/common` branch; do not assume the helper repo itself is a full kernel source tree.
-- Add a preflight that rejects missing DTBO/kernel inputs, missing vendor files, invalid hashes, and placeholder binaries before the Android source sync/build begins.
+- Use the matching firmware kernel image component and DTBO as prebuilts; do not compile the helper's generic kernel workflow for this ROM.
+- Pin the exact device/vendor commits validated by the lightweight preflight into the runtime local manifest so a moving branch cannot change inputs before sync.
+- Add a preflight that rejects missing DTBO/kernel inputs, missing vendor files, invalid hashes, and placeholder binaries before the Android source sync begins.
 
 ## Acceptance criteria
 

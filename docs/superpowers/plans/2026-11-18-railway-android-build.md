@@ -4,7 +4,7 @@
 
 **Goal:** Build a LineageOS 22.1 userdebug ROM for TB311FU on Railway and publish the flashable ZIP plus integrity metadata to a public GitHub Release.
 
-**Architecture:** A one-shot Railway Docker service keeps the full Lineage checkout and output on a persistent volume. It validates the device inputs, builds the device kernel/DTBO and ROM, then creates a tagged release only after every artifact check passes.
+**Architecture:** A one-shot Railway Docker service keeps the full Lineage checkout and output on a persistent volume. It validates vendor blobs and matching firmware kernel/DTBO inputs before sync, pins the validated device/vendor commits, builds the ROM, then creates a tagged release only after every artifact check passes.
 
 **Tech Stack:** Ubuntu Linux, Docker, LineageOS `repo`, Bash, AOSP/Lineage build tools, GitHub CLI.
 
@@ -16,6 +16,7 @@
 - The Railway runtime needs Linux x86-64, at least 64 GiB RAM, and at least 400 GiB free on the persistent volume.
 - Run one job per manual deployment; restart policy is `NEVER`, with automatic deploys and cron disabled.
 - Never generate or accept placeholder proprietary blobs.
+- Require the matching TB311FU kernel image and `dtbo.img` from one firmware dump under `/workspace/inputs` before source sync.
 - Store `GH_TOKEN` as a Railway secret variable; require a new `BUILD_TAG` for each public release.
 - Do not modify or flash the connected tablet.
 - Do not add or run a separate automated test suite; verification is the configured build and release checks requested by the user.
@@ -23,7 +24,7 @@
 ## Review Focus
 
 - Missing or mismatched vendor files: require all 111 listed paths and valid SHA-256 values before source sync/build.
-- Missing DTBO/kernel outputs: require nonempty generated images before Android build starts.
+- Missing DTBO/kernel inputs: require valid matching firmware prebuilts before the Android source sync starts.
 - Railway resource/storage shortfall: report actual and required values, then exit before repo sync.
 - Repeated/invalid release tag: stop before creating a release; never overwrite an existing tag.
 - GitHub's 2 GiB per-asset limit: upload the OTA ZIP directly when below the limit; otherwise split into 1900 MiB parts and document reassembly.
@@ -48,26 +49,26 @@
 - [ ] Replace all placeholder vendor files only after all 111 required paths validate; keep source files in the vendor repository as specified by the approved design.
 - [ ] Verify the extractor reports 111 valid files, zero missing paths, zero placeholder files, and zero hash mismatches before continuing.
 
-**Stop condition:** If neither the local image nor an authorized firmware dump supplies all 111 files, stop before committing vendor assets or starting the Railway build and report the missing paths.
+**Stop condition:** If neither the local image nor an authorized firmware dump supplies all 111 files and the matching kernel/DTBO, stop before committing vendor assets or starting the Railway build and report the missing inputs.
 
 ---
 
-### Task 2: Build compatible kernel and DTBO inputs
+### Task 2: Validate and prepare compatible kernel and DTBO inputs
 
 **Repositories/files:**
 - Modify: `BangerSoul/local_manifests/TB311FU.xml`
 - Modify: `BangerSoul/device_lenovo_TB311FU/BoardConfig.mk`
-- Create: `BangerSoul/local_manifests/scripts/build-kernel.sh`
-- Read and pin: `BangerSoul/kernel_lenovo_TB311FU` at `ac1fac75df3f268dc0a8d08a5a92eb0d2815b92d`
+- Create: `BangerSoul/local_manifests/scripts/validate-kernel-inputs.py`
+- Create: `BangerSoul/local_manifests/scripts/prepare-kernel.sh`
 
 **Interfaces:**
-- Input: kernel helper repo's TB311FU patches and `kernel/common` branch `android15-6.6-2025-04_r18` used by its existing workflow.
-- Output: validated `device/lenovo/TB311FU/prebuilt/Image.gz` and `device/lenovo/TB311FU/prebuilt/dtbo.img`.
+- Input: the kernel image component and `dtbo.img` from the same matching TB311FU firmware dump, staged at `/workspace/inputs/Image` and `/workspace/inputs/dtbo.img`.
+- Output: validated `device/lenovo/TB311FU/prebuilt/Image` and `device/lenovo/TB311FU/prebuilt/dtbo.img`.
 
-- [ ] Add the kernel helper repository to `TB311FU.xml` at the pinned commit above; capture the resolved `kernel/common` commit in build provenance.
-- [ ] Adapt the existing kernel workflow's Android 15 GKI build steps into `scripts/build-kernel.sh`; use `gki_defconfig`, apply the repository's TB311FU patches, and require the `dtbo.img` build command to succeed instead of masking failure.
-- [ ] Update `BoardConfig.mk` with `TARGET_FORCE_PREBUILT_KERNEL := true`, `TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image.gz`, and `BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/prebuilt/dtbo.img`; these files are generated in the build workspace before lunch.
-- [ ] Verify both images exist, are nonempty, and have the expected formats before invoking the Android build.
+- [ ] Require the kernel image component and `dtbo.img` from the same matching firmware dump; fail before repo sync if either is absent or invalid.
+- [ ] Validate gzip or raw arm64 kernel signature, Android DT table signature, and SHA-256 values; stage immutable copies for the build.
+- [ ] Update `BoardConfig.mk` with `TARGET_FORCE_PREBUILT_KERNEL := true`, `TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image`, and `BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/prebuilt/dtbo.img`.
+- [ ] Prepare both prebuilts and record their hashes in provenance before lunch/build.
 
 ---
 
@@ -76,15 +77,20 @@
 **Files:**
 - Create: `BangerSoul/local_manifests/Dockerfile`
 - Create: `BangerSoul/local_manifests/scripts/railway-build.sh`
+- Create: `BangerSoul/local_manifests/scripts/validate-proprietary.py`
+- Create: `BangerSoul/local_manifests/scripts/validate-kernel-inputs.py`
+- Create: `BangerSoul/local_manifests/scripts/pin-local-manifest.py`
+- Create: `BangerSoul/local_manifests/scripts/prepare-kernel.sh`
 
 **Interfaces:**
 - Environment: `BUILD_TAG` and secret `GH_TOKEN`; Railway mounts the persistent volume at `/workspace`.
-- Input: `TB311FU.xml`, the repaired device/vendor trees, and validated kernel outputs.
+- Input: `TB311FU.xml`, the repaired device/vendor trees, and validated matching firmware kernel/DTBO inputs.
 - Output: completed LineageOS package and build provenance under the persistent workspace.
 
-- [ ] Add an Ubuntu 22.04 x86-64 Docker image with pinned versions of `repo` and `gh`, plus Java, Git/LFS, Android build dependencies, and kernel toolchain utilities; make the build script the container entrypoint.
+- [ ] Add an Ubuntu 22.04 x86-64 Docker image with pinned versions of `repo` and `gh`, plus Java, Git/LFS, and Android build dependencies; make the build script the container entrypoint.
 - [ ] In `railway-build.sh`, check architecture, memory, volume mount, and free disk before syncing; require at least 64 GiB RAM and 400 GiB free.
-- [ ] Initialize/sync LineageOS 22.1 into `/workspace`, overlay the local manifest, capture resolved repo revisions, build kernel/DTBO, then build `lineage_TB311FU-userdebug`.
+- [ ] Preflight all 111 vendor files and matching firmware kernel/DTBO before sync; use only validated, staged copies.
+- [ ] Initialize/sync LineageOS 22.1 into `/workspace`, pin the device/vendor revisions validated by preflight, prepare the kernel/DTBO prebuilts, then build `lineage_TB311FU-userdebug`.
 - [ ] Require exactly one nonempty TB311FU flashable OTA ZIP from the build output; keep build outputs and logs on the volume.
 - [ ] Use shell fail-fast behavior so source sync, kernel, or ROM failures exit nonzero and skip the publish stage.
 
@@ -102,7 +108,7 @@
 
 - [ ] Document Railway Dockerfile selection, a volume mounted at `/workspace` with enough capacity to retain 400 GiB free, custom per-replica RAM of at least 64 GiB, one replica, restart policy `NEVER`, and disabled automatic deploys/cron.
 - [ ] Require `BUILD_TAG` and validate the tag before publication; never commit the token or artifacts to Git.
-- [ ] Generate SHA-256 for the complete ROM ZIP and provenance containing target, branch, manifest revision, device/vendor/kernel revisions, and build timestamp.
+- [ ] Generate SHA-256 for the complete ROM ZIP and provenance containing target, branch, manifest revision, device/vendor revisions, firmware kernel/DTBO hashes, and build timestamp.
 - [ ] Create the public release only after the package and checksum verify; upload the ZIP directly if it is under 2 GiB, otherwise upload 1900 MiB numbered parts plus checksum/provenance and document reassembly. Fail if the tag already exists.
 - [ ] Provide manual Railway deployment steps and explain that the first run requires the complete source sync and qualifying custom-resource Railway plan.
 
