@@ -64,8 +64,8 @@
 - Output: validated `Image.gz` and `dtbo.img` at the device tree's prebuilt paths.
 
 - [ ] Add the kernel helper repository to `TB311FU.xml` at the pinned commit above; capture the resolved `kernel/common` commit in build provenance.
-- [ ] Adapt the existing kernel workflow's Android 15 GKI build steps into `scripts/build-kernel.sh`; select its TB311FU defconfig, preserve its device-required patch set, and require DTBO generation to succeed.
-- [ ] Update `BoardConfig.mk` to consume the generated prebuilt kernel and DTBO from the build workspace instead of a nonexistent checked-in `prebuilt/dtbo.img`.
+- [ ] Adapt the existing kernel workflow's Android 15 GKI build steps into `scripts/build-kernel.sh`; use `gki_defconfig`, apply the repository's TB311FU patches, and require the `dtbo.img` build command to succeed instead of masking failure.
+- [ ] Update `BoardConfig.mk` with `TARGET_FORCE_PREBUILT_KERNEL := true`, `TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image.gz`, and `BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/prebuilt/dtbo.img`; these files are generated in the build workspace before lunch.
 - [ ] Verify both images exist, are nonempty, and have the expected formats before invoking the Android build.
 
 ---
