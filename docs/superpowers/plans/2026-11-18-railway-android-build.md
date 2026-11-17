@@ -42,7 +42,7 @@
 - Input: matching TB311FU vendor image or firmware dump containing the listed proprietary paths.
 - Output: vendor tree with exactly the real files required by the proprietary list; each expected hash is verified before packaging.
 
-- [ ] Inspect `partitions/vendor_stabilized.img` and the connected device for listed files; do not treat the active device as complete (currently 41 of 111 paths exist).
+- [ ] Inspect the workspace's local `vendor_stabilized.img` and the connected device for listed files; do not treat the active device as complete (currently 41 of 111 paths exist).
 - [ ] Fix `extract-files.py` to import its annotations, parse the 64-character hashes as SHA-256, read only supplied dump files, fail on missing paths/hash mismatches, and remove placeholder generation.
 - [ ] Correct `proprietary-files.txt` entries and hashes against the matching dump; preserve destination mappings.
 - [ ] Replace all placeholder vendor files only after all 111 required paths validate; keep source files in the vendor repository as specified by the approved design.
@@ -61,8 +61,8 @@
 - Read and pin: `BangerSoul/kernel_lenovo_TB311FU` at `ac1fac75df3f268dc0a8d08a5a92eb0d2815b92d`
 
 **Interfaces:**
-- Input: kernel helper repo's TB311FU defconfig/patches and the Android 15 GKI source branch used by its existing workflow.
-- Output: validated `Image.gz` and `dtbo.img` at the device tree's prebuilt paths.
+- Input: kernel helper repo's TB311FU patches and `kernel/common` branch `android15-6.6-2025-04_r18` used by its existing workflow.
+- Output: validated `device/lenovo/TB311FU/prebuilt/Image.gz` and `device/lenovo/TB311FU/prebuilt/dtbo.img`.
 
 - [ ] Add the kernel helper repository to `TB311FU.xml` at the pinned commit above; capture the resolved `kernel/common` commit in build provenance.
 - [ ] Adapt the existing kernel workflow's Android 15 GKI build steps into `scripts/build-kernel.sh`; use `gki_defconfig`, apply the repository's TB311FU patches, and require the `dtbo.img` build command to succeed instead of masking failure.
@@ -78,11 +78,11 @@
 - Create: `BangerSoul/local_manifests/scripts/railway-build.sh`
 
 **Interfaces:**
-- Environment: `RAILWAY_VOLUME_MOUNT_PATH=/workspace`, `BUILD_TAG`, and secret `GH_TOKEN`.
+- Environment: `BUILD_TAG` and secret `GH_TOKEN`; Railway mounts the persistent volume at `/workspace`.
 - Input: `TB311FU.xml`, the repaired device/vendor trees, and validated kernel outputs.
 - Output: completed LineageOS package and build provenance under the persistent workspace.
 
-- [ ] Add an Ubuntu x86-64 Docker image with pinned package versions for `repo`, Java, Git/LFS, Android build dependencies, `gh`, and kernel toolchain utilities; make the build script the container entrypoint.
+- [ ] Add an Ubuntu 22.04 x86-64 Docker image with pinned versions of `repo` and `gh`, plus Java, Git/LFS, Android build dependencies, and kernel toolchain utilities; make the build script the container entrypoint.
 - [ ] In `railway-build.sh`, check architecture, memory, volume mount, and free disk before syncing; require at least 64 GiB RAM and 400 GiB free.
 - [ ] Initialize/sync LineageOS 22.1 into `/workspace`, overlay the local manifest, capture resolved repo revisions, build kernel/DTBO, then build `lineage_TB311FU-userdebug`.
 - [ ] Require exactly one nonempty TB311FU flashable OTA ZIP from the build output; keep build outputs and logs on the volume.
