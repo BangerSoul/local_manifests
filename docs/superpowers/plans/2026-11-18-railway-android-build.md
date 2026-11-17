@@ -1,6 +1,6 @@
 # Railway Android Build Implementation Plan
 
-> **For agentic workers:** Execute task-by-task in this order; each repository change stays on a `codex/railway-android-build` branch until reviewed.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to execute task-by-task; each repository change stays on a `codex/railway-android-build` branch until reviewed.
 
 **Goal:** Build a LineageOS 22.1 userdebug ROM for TB311FU on Railway and publish the flashable ZIP plus integrity metadata to a public GitHub Release.
 
@@ -26,6 +26,7 @@
 - Missing DTBO/kernel outputs: require nonempty generated images before Android build starts.
 - Railway resource/storage shortfall: report actual and required values, then exit before repo sync.
 - Repeated/invalid release tag: stop before creating a release; never overwrite an existing tag.
+- GitHub's 2 GiB per-asset limit: upload the OTA ZIP directly when below the limit; otherwise split into 1900 MiB parts and document reassembly.
 - Failed build or incomplete ZIP: preserve source/output on the volume and create no GitHub Release.
 
 ---
@@ -101,8 +102,8 @@
 
 - [ ] Document Railway Dockerfile selection, a volume mounted at `/workspace` with enough capacity to retain 400 GiB free, custom per-replica RAM of at least 64 GiB, one replica, restart policy `NEVER`, and disabled automatic deploys/cron.
 - [ ] Require `BUILD_TAG` and validate the tag before publication; never commit the token or artifacts to Git.
-- [ ] Generate SHA-256 for the ROM ZIP and provenance containing target, branch, manifest revision, device/vendor/kernel revisions, and build timestamp.
-- [ ] Create the public release only after the package and checksum verify; attach only the ROM ZIP, checksum, and provenance file. Fail if the tag already exists.
+- [ ] Generate SHA-256 for the complete ROM ZIP and provenance containing target, branch, manifest revision, device/vendor/kernel revisions, and build timestamp.
+- [ ] Create the public release only after the package and checksum verify; upload the ZIP directly if it is under 2 GiB, otherwise upload 1900 MiB numbered parts plus checksum/provenance and document reassembly. Fail if the tag already exists.
 - [ ] Provide manual Railway deployment steps and explain that the first run requires the complete source sync and qualifying custom-resource Railway plan.
 
 ---
@@ -112,7 +113,7 @@
 - [ ] Wait until the Railway project has the documented custom compute and persistent volume; do not change account billing or plans.
 - [ ] Connect the service to `BangerSoul/local_manifests`, set its Dockerfile entrypoint, volume and secret variables, disable auto deploy/cron, and set restart policy to `NEVER`.
 - [ ] Trigger one manual deployment with a fresh `BUILD_TAG`; monitor it through completion.
-- [ ] Confirm Railway reports `Completed`, the build log shows the selected target, and the public GitHub Release contains the ROM ZIP, matching SHA-256, and provenance.
+- [ ] Confirm Railway reports `Completed`, the build log shows the selected target, and the public GitHub Release contains the ROM ZIP (or all numbered parts), matching SHA-256, and provenance.
 - [ ] If preflight or build fails, fix the reported input on its owning repository and rerun with a new tag; do not publish partial artifacts.
 
 ## Handoff limitations
